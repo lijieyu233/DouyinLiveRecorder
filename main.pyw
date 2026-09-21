@@ -1,25 +1,17 @@
 # coding=utf-8
+"""抖音直播录制工具 —— 入口。
+
+有终端时以命令行模式运行，无终端（双击运行）时以 GUI 模式运行。
+"""
+
 import sys
 
-import dylr.core.app as app
+from dylr.core import app
 
 
-def main():
-    # 自动识别以命令行还是GUI形式运行
-    if sys.stdin and sys.stdin.isatty():
-        run_cli()
-    else:
-        run_gui()
-    # run_cli()
-
-
-def run_cli():
-    app.init(False)
-
-
-def run_gui():
-    app.init(True)
-    ...
+def main() -> None:
+    gui_mode = not (sys.stdin and sys.stdin.isatty())
+    app.init(gui_mode=gui_mode)
 
 
 if __name__ == '__main__':
