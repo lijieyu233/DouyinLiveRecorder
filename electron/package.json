@@ -1,0 +1,33 @@
+{
+  "name": "dylr-desktop",
+  "productName": "DouyinLiveRecorder",
+  "version": "5.0.0",
+  "description": "DouyinLiveRecorder 桌面端：40+ 平台直播监控与录制的图形界面",
+  "main": "src/main.js",
+  "private": true,
+  "author": "Hmily",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "icons": "python tools/make_icons.py",
+    "dist": "electron-builder --dir",
+    "pack": "electron-builder"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0"
+  },
+  "build": {
+    "appId": "com.dylr.desktop",
+    "productName": "DouyinLiveRecorder",
+    "icon": "assets/icon.ico",
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "../dist-desktop"
+    }
+  }
+}

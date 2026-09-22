@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self';
+                 connect-src 'self' http://127.0.0.1:* ws://127.0.0.1:*;
+                 img-src 'self' data: blob:;
+                 media-src 'self' http://127.0.0.1:* blob:;
+                 style-src 'self' 'unsafe-inline';
+                 script-src 'self';
+                 object-src 'none';
+                 base-uri 'none'">
+  <title>DouyinLiveRecorder</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- 自绘标题栏（无边框窗口） -->
+  <header id="titlebar">
+    <div class="tb-left">
+      <span class="tb-logo" aria-hidden="true">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"></circle>
+          <path d="M6.2 6.2a8 8 0 0 0 0 11.6M17.8 6.2a8 8 0 0 1 0 11.6M3.4 3.4a12 12 0 0 0 0 17.2M20.6 3.4a12 12 0 0 1 0 17.2"></path>
+        </svg>
+      </span>
+      <span class="tb-title">DouyinLiveRecorder</span>
+      <span class="tb-status" id="tb-status">
+        <span class="status-dot"></span>
+        <span class="tb-status-text">正在启动后端…</span>
+      </span>
+    </div>
+    <div class="tb-drag"></div>
+    <div class="tb-right">
+      <button class="tb-btn" id="tb-min" title="最小化" aria-label="最小化">
+        <svg width="12" height="12" viewBox="0 0 12 12"><path d="M2 6h8" stroke="currentColor" stroke-width="1.2"></path></svg>
+      </button>
+      <button class="tb-btn" id="tb-max" title="最大化" aria-label="最大化">
+        <svg width="12" height="12" viewBox="0 0 12 12"><rect x="2.5" y="2.5" width="7" height="7" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.2"></rect></svg>
+      </button>
+      <button class="tb-btn danger" id="tb-close" title="关闭" aria-label="关闭">
+        <svg width="12" height="12" viewBox="0 0 12 12"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.2"></path></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- 断线提示条 -->
+  <div id="conn-banner" class="conn-banner" hidden>
+    <span class="spinner small" aria-hidden="true"></span>
+    <span id="conn-banner-text">与后端的连接已断开，正在重连…</span>
+  </div>
+
+  <!-- 主体 -->
+  <div id="app" hidden>
+    <aside id="sidebar"></aside>
+    <main id="main">
+      <header id="page-head"></header>
+      <div id="view-root"></div>
+    </main>
+  </div>
+
+  <div id="boot-root"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
