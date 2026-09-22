@@ -7,7 +7,7 @@ const path = require('node:path');
 
 const { BackendService } = require('./backend');
 const { Notifier } = require('./notifications');
-const { Prefs } = require('./prefs');
+const { DEFAULTS: PREF_DEFAULTS, Prefs } = require('./prefs');
 const { TrayController } = require('./tray');
 
 const PROJECT_ROOT = process.env.DYLR_HOME
@@ -28,6 +28,10 @@ const CAPTURE_MODE = process.argv.includes('--capture');
 if (process.platform === 'win32') app.setAppUserModelId('com.dylr.desktop');
 
 const prefs = new Prefs();
+// 偏好必须在 app ready 之前读：下面判断是否关闭硬件加速时就要用它。
+// 只是同步读一个 JSON，放在这里没有副作用（userData 路径此时也可用）。
+prefs.load(app.getPath('userData'));
+
 let notifier = null;
 let tray = null;
 
@@ -36,29 +40,41 @@ let backend = null;
 let forceQuit = false;
 let quitPending = false;
 let quitFallback = null;
-let relaunching = false;
 let captureTrigger = null;
 /** 托盘与窗口共用的一份「界面在显示什么」，由渲染层推送。 */
 let uiState = null;
 
 /**
- * 受限环境（远程桌面 / 沙箱 / 无显卡驱动的虚拟机）里 GPU 进程可能无法启动，
- * Electron 会直接 FATAL 退出。这里统一处理：
- * - 命中 --disable-gpu 或 DYLR_DISABLE_GPU=1 时强制软件渲染；
- * - 运行中 GPU 进程反复崩溃时，自动带 --disable-gpu 重启一次。
+ * 软件渲染开关。命中任意一条即关闭硬件加速：
+ *   --disable-gpu 命令行 / DYLR_DISABLE_GPU=1 环境变量 / 桌面端偏好里的开关
+ *
+ * 【实测结论，别再踩】Chromium 的 GPU 进程起不来时，会重试几次后直接
+ * `FATAL: gpu_data_manager_impl_private.cc GPU process isn't usable. Goodbye.`
+ * 让整个进程退出，`before-quit` 都不执行 —— 用户看到的就是「双击了没反应」。
+ *
+ * 但先别急着怪显卡：实测对照过四种组合，**`--disable-gpu` 对这个 FATAL 完全无效**，
+ * 真正有效的是 `--no-sandbox`（受限环境里 GPU 进程起不来，是因为它没法建立自己的
+ * 沙箱）。所以：
+ *   - 不要用「自动重启 + 换参数」去兜这个错。relaunch 出来的新实例会撞上单实例锁的
+ *     竞态、被自己锁死后静默退出，把失败藏得比失败本身更糟；而且它换的
+ *     `--disable-gpu` 根本治不了病。
+ *   - 这里只如实报告，把判断权留给用户和日志（logs/desktop-console.log）。
+ *   - 受限环境请在启动命令里显式加 `--no-sandbox`（「启动桌面端.bat」支持
+ *     DYLR_EXTRA_ARGS 透传），而不是让程序偷偷把沙箱关掉——那不该由程序替用户决定。
  */
 const SOFTWARE_RENDER = process.argv.includes('--disable-gpu')
-  || process.env.DYLR_DISABLE_GPU === '1';
+  || process.env.DYLR_DISABLE_GPU === '1'
+  || prefs.get('desktop.softwareRendering') === true;
 if (SOFTWARE_RENDER) {
   app.disableHardwareAcceleration();
 }
 
 app.on('child-process-gone', (_event, details) => {
-  if (details?.type !== 'GPU' || SOFTWARE_RENDER || relaunching) return;
-  relaunching = true;
-  console.warn('[dylr] GPU 进程不可用，改用软件渲染重启');
-  app.relaunch({ args: process.argv.slice(1).concat(['--disable-gpu']) });
-  app.exit(0);
+  if (details?.type !== 'GPU') return;
+  console.warn(`[dylr] GPU 进程不可用：reason=${details.reason} exitCode=${details.exitCode}`);
+  if (SOFTWARE_RENDER) {
+    console.warn('[dylr] 已关闭硬件加速但仍失败，多半是环境限制（需要 --no-sandbox 之类）');
+  }
 });
 
 // ---------------------------------------------------------------- 单实例
@@ -351,15 +367,8 @@ function registerIpc() {
   // ------------------------------------------------------------ 桌面偏好
   ipcMain.handle('prefs:get', () => prefs.all());
   ipcMain.handle('prefs:set', (_event, patch) => prefs.set(patch || {}));
-  ipcMain.handle('prefs:reset', () => prefs.set({
-    desktop: {
-      closeToTray: true,
-      notifications: true,
-      notifyWhenFocused: false,
-      notifyOnFinish: true,
-      notifyOnError: true,
-    },
-  }));
+  // 直接取 prefs.js 里的默认值表，避免两处各写一份、日后改一处漏一处
+  ipcMain.handle('prefs:reset', () => prefs.set(PREF_DEFAULTS));
 
   /**
    * 渲染层上报「界面现在显示什么」，供托盘菜单与悬浮提示使用。
@@ -425,7 +434,8 @@ function registerIpc() {
 
 // ---------------------------------------------------------------- 生命周期
 app.whenReady().then(async () => {
-  prefs.load(app.getPath('userData'));
+  // 注意：不要在这里再调 prefs.load()——它在模块顶层已经读过了，
+  // 再读一次会把「本次运行中刚记录的 GPU 崩溃标记」冲掉。
   notifier = new Notifier({
     iconPath: ICON_PATH,
     prefs,

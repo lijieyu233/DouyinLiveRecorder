@@ -26,6 +26,12 @@ const DEFAULTS = {
     notifyWhenFocused: false, // 窗口在前台时也通知（默认关闭，避免打扰）
     notifyOnFinish: true,     // 一场录制结束时通知
     notifyOnError: true,      // 任务异常时通知
+    /**
+     * 关闭硬件加速。给显卡驱动异常（虚拟机 / 远程桌面 / 老旧驱动）导致界面黑屏
+     * 或崩溃的情况用，多数人不需要。需要重启应用才生效——Electron 限制
+     * disableHardwareAcceleration() 必须在 ready 之前调用，运行中切换不了。
+     */
+    softwareRendering: false,
   },
 };
 

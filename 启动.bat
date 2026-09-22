@@ -1,12 +1,16 @@
 @echo off
-chcp 65001 >nul
+rem ±àÂëÒªÇó£º±¾ÎÄ¼ş±ØĞë´æÎª GBK(936)£¬ÇÒ²»ÒªÔÚÀïÃæĞ´ chcp ÃüÁî¡£
+rem Ô­Òò¼û¡¸Æô¶¯×ÀÃæ¶Ë.bat¡¹¶¥²¿×¢ÊÍ£ºÖĞÍ¾ÇĞ´úÂëÒ³»áÈÃ cmd µÄĞĞ±ß½ç´íÎ»¡£
+
 cd /d "%~dp0"
+
 if not exist ".venv\Scripts\python.exe" (
-    echo [!] æœªæ‰¾åˆ° .venv ç¯å¢ƒï¼Œè¯·å…ˆè¿è¡Œã€Œå®‰è£…ä¾èµ–.batã€
+    echo [!] Î´ÕÒµ½ .venv »·¾³£¬ÇëÏÈË«»÷¡¸°²×°ÒÀÀµ.bat¡¹¡£
     pause
     exit /b 1
 )
+
 ".venv\Scripts\python.exe" main.py
 echo.
-echo [*] ç¨‹åºå·²é€€å‡º
+echo [*] ³ÌĞòÒÑÍË³ö
 pause

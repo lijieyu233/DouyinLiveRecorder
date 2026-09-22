@@ -1,38 +1,43 @@
 @echo off
-chcp 65001 >nul
+rem ±àÂëÒªÇó£º±¾ÎÄ¼þ±ØÐë´æÎª GBK(936)£¬ÇÒ²»ÒªÔÚÀïÃæÐ´ chcp ÃüÁî¡£
+rem Ô­Òò¼û¡¸Æô¶¯×ÀÃæ¶Ë.bat¡¹¶¥²¿×¢ÊÍ£ºÖÐÍ¾ÇÐ´úÂëÒ³»áÈÃ cmd µÄÐÐ±ß½ç´íÎ»¡£
+
 cd /d "%~dp0"
-echo [*] ä½¿ç”¨ uv åˆ›å»º Python 3.11 éš”ç¦»çŽ¯å¢ƒå¹¶å®‰è£…ä¾èµ–...
+
+echo [*] Ê¹ÓÃ uv ´´½¨ Python 3.11 ¸ôÀë»·¾³²¢°²×°ÒÀÀµ...
 uv venv --python 3.11 .venv
 if errorlevel 1 (
-    echo [!] åˆ›å»ºè™šæ‹ŸçŽ¯å¢ƒå¤±è´¥ï¼Œè¯·ç¡®è®¤å·²å®‰è£… uvï¼ˆhttps://docs.astral.sh/uv/ï¼‰
+    echo [!] ´´½¨ÐéÄâ»·¾³Ê§°Ü£¬ÇëÈ·ÈÏÒÑ°²×° uv£¨https://docs.astral.sh/uv/£©
     pause
     exit /b 1
 )
-rem --no-cacheï¼šè·³è¿‡ uv æž„å»ºç¼“å­˜ï¼Œé¿å…åœ¨å—é™çŽ¯å¢ƒä¸‹æ¸…ç†ç¼“å­˜ç›®å½•è¢«æ‹’å¯¼è‡´å®‰è£…å¤±è´¥
+
+rem --no-cache£ºÌø¹ý uv ¹¹½¨»º´æ¡£ÊÜÏÞ»·¾³ÀïÇåÀí»º´æÄ¿Â¼»á±»¾Ü£¬µ¼ÖÂ°²×°ÖÐ¶Ï¡£
 uv pip install --no-cache --python ".venv\Scripts\python.exe" -i https://mirrors.aliyun.com/pypi/simple/ -r requirements.txt
 if errorlevel 1 (
-    echo [!] ä¾èµ–å®‰è£…å¤±è´¥
+    echo [!] ÒÀÀµ°²×°Ê§°Ü
     pause
     exit /b 1
 )
 echo.
-echo [*] Python ä¾èµ–å®‰è£…å®Œæˆ
+echo [*] Python ÒÀÀµ°²×°Íê³É
 
-rem æ¡Œé¢ç«¯ä¾èµ–ï¼ˆElectronï¼‰ä½“ç§¯è¾ƒå¤§ï¼Œè£…è¿‡å°±è·³è¿‡
+rem ×ÀÃæ¶ËÒÀÀµ£¨Electron£©Ìå»ý½Ï´ó£¬×°¹ý¾ÍÌø¹ý
 if not exist "electron\node_modules\electron\dist\electron.exe" (
-    echo [*] æ­£åœ¨å®‰è£…æ¡Œé¢ç«¯ä¾èµ–ï¼ˆElectronï¼Œçº¦ 250MBï¼‰...
+    echo [*] ÕýÔÚ°²×°×ÀÃæ¶ËÒÀÀµ£¨Electron£¬Ô¼ 250MB£©...
     pushd electron
     call npm install --registry=https://registry.npmmirror.com
     set NPM_RESULT=%errorlevel%
     popd
     if not "%NPM_RESULT%"=="0" (
-        echo [!] æ¡Œé¢ç«¯ä¾èµ–å®‰è£…å¤±è´¥ï¼Œå¯ç¨åŽæ‰‹åŠ¨æ‰§è¡Œï¼šcd electron ^&^& npm install
+        echo [!] ×ÀÃæ¶ËÒÀÀµ°²×°Ê§°Ü£¬¿ÉÉÔºóÊÖ¶¯Ö´ÐÐ£ºcd electron ^&^& npm install
     ) else (
-        echo [*] æ¡Œé¢ç«¯ä¾èµ–å®‰è£…å®Œæˆ
+        echo [*] ×ÀÃæ¶ËÒÀÀµ°²×°Íê³É
     )
 ) else (
-    echo [*] æ¡Œé¢ç«¯ä¾èµ–å·²å­˜åœ¨ï¼Œè·³è¿‡
+    echo [*] ×ÀÃæ¶ËÒÀÀµÒÑ´æÔÚ£¬Ìø¹ý
 )
+
 echo.
-echo å®Œæˆã€‚åŒå‡»ã€Œå¯åŠ¨.batã€ä½¿ç”¨å‘½ä»¤è¡Œæ¨¡å¼ï¼ŒåŒå‡»ã€Œå¯åŠ¨æ¡Œé¢ç«¯.batã€ä½¿ç”¨å›¾å½¢ç•Œé¢ã€‚
+echo Íê³É¡£Ë«»÷¡¸Æô¶¯.bat¡¹ÓÃÃüÁîÐÐÄ£Ê½£¬Ë«»÷¡¸Æô¶¯×ÀÃæ¶Ë.bat¡¹ÓÃÍ¼ÐÎ½çÃæ¡£
 pause

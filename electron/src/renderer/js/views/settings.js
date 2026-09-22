@@ -56,6 +56,12 @@ const DESKTOP_PREFS = [
     parent: 'notifications',
     help: '默认关闭：正在看界面的时候不必再弹一条系统通知，界面内已有提示条。',
   },
+  {
+    key: 'softwareRendering',
+    label: '关闭硬件加速（软件渲染）',
+    restart: true,
+    help: '界面黑屏、闪一下就没、或显卡驱动异常时打开。多数情况不需要。',
+  },
 ];
 
 const PUSH_PREFIX = '推送·';
@@ -275,6 +281,8 @@ export function createSettingsView() {
       h('div.field-label-row',
         h('span.field-label', def.label),
         h('span.instant-badge', '立即生效'),
+        // 少数开关受 Electron 限制必须在启动前决定，如实标出来
+        def.restart ? h('span.dirty-badge', '需重启应用') : null,
       ),
       def.help ? h('div.field-help', def.help) : null,
     ),

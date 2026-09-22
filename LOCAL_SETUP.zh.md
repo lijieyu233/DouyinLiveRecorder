@@ -109,11 +109,26 @@ tqdm 4.70.1 / httpx 0.28.1(+h2 4.4.1) / pyexecjs 1.5.1。
 - 六个页面：概览 / 任务 / 录制文件 / 设置 / 日志 / 环境
 - **关窗默认最小化到托盘，录制继续**；要退出用托盘菜单里的「退出 DouyinLiveRecorder」
 - 主播开播、录制结束、任务异常会发系统通知（首次启动会真正自检 ffmpeg 与 Node.js）
-- 偏好存在 Electron 的 userData 目录（`desktop-prefs.json`），不写进 `config.ini`
+- 偏好存在 Electron 的 userData 目录（`%APPDATA%\DouyinLiveRecorder\desktop-prefs.json`），
+  不写进 `config.ini`
+- 启动失败时看 **`logs\desktop-console.log`**（Electron 的原始输出）
 
 > Windows 上从命令行启动前，务必清掉 `NODE_OPTIONS` 与 `ELECTRON_RUN_AS_NODE`
 > 两个环境变量（`启动桌面端.bat` 已处理）：前者会让 Electron 拒绝启动，
 > 后者会让它退化成普通 Node、界面起不来。
+
+> **受限环境**（远程桌面 / 虚拟机 / 被锁定的机器）里，Chromium 的 GPU 进程可能因为
+> 建不了自己的沙箱而起不来，表现为双击后一闪而过。此时先设环境变量再启动：
+> ```bat
+> set DYLR_EXTRA_ARGS=--no-sandbox
+> 启动桌面端.bat
+> ```
+> 注意 `--disable-gpu` 对这种情况**无效**（已实测四种参数组合），别在它上面浪费时间。
+
+> ⚠️ 本目录所有 `.bat` 必须存成 **GBK(936) + CRLF，且不含 `chcp`**。
+> cmd.exe 是按字节偏移读批处理文件的，中途用 `chcp` 切代码页会让它的行边界错位、
+> 把中文从中间截断后当命令执行 —— 症状是**双击一点反应都没有**。
+> 用编辑器改这些脚本时注意别另存成 UTF-8。
 
 ## 配置
 

@@ -1,48 +1,80 @@
 @echo off
-chcp 65001 >nul
+rem ============================================================================
+rem  DouyinLiveRecorder ×ÀÃæ¶ËÆô¶¯½Å±¾
+rem  ---------------------------------------------------------------------------
+rem  ¡¾±àÂëÒªÇó¡¿±¾ÎÄ¼þ±ØÐë´æÎª GBK(936)£¬ÇÒ²»ÒªÔÚÀïÃæÐ´ chcp ÃüÁî¡£
+rem  cmd.exe ÊÇ°´×Ö½ÚÆ«ÒÆÖðÐÐ¶ÁÈ¡Åú´¦ÀíÎÄ¼þµÄ£¬ÖÐÍ¾ÓÃ chcp ÇÐ»»´úÂëÒ³»áÈÃËü
+rem  µÄÐÐ±ß½ç´íÎ»£ºÖÐÎÄ»á±»´ÓÖÐ¼ä½Ø¶Ï¡¢µ±³ÉÃüÁîÈ¥Ö´ÐÐ£¬Õû¸ö¿ØÖÆÁ÷¶¼»áÂÒµô¡£
+rem  ±¾ÎÄ¼þ´ËÇ°ÓÃ UTF-8 + chcp 65001 ¾Í²ÈÁËÕâ¸ö¿Ó¡ª¡ªË«»÷ºó´°¿ÚÒ»ÉÁ¶ø¹ý£¬
+rem  Electron ¸ù±¾Ã»±»ÕýÈ·À­Æð£¬¶øÇÒÃ»ÓÐÈÎºÎÌáÊ¾¡£
+rem
+rem  ¡¾±ØÐëÇåµôÁ½¸ö»·¾³±äÁ¿¡¿
+rem    NODE_OPTIONS         ËÞÖ÷»·¾³¿ÉÄÜ×¢Èë --use-system-ca µÈ²ÎÊý£¬Electron ²»ÈÏ
+rem    ELECTRON_RUN_AS_NODE Èô±»ÖÃÎ»£¬Electron »áÍË»¯³ÉÆÕÍ¨ Node£¬½çÃæÆð²»À´
+rem  cmd Àï set VAR= ±íÊ¾É¾³ý¸Ã±äÁ¿£¨²»ÊÇÉèÎª¿Õ´®£©£¬ÕýºÃ·ûºÏÐèÒª¡£
+rem
+rem  ¡¾ÊÜÏÞ»·¾³¡¿Ô¶³Ì×ÀÃæ / ÐéÄâ»ú / ±»Ëø¶¨µÄ»úÆ÷ÉÏ£¬Chromium µÄ GPU ½ø³Ì¿ÉÄÜ
+rem  ÒòÎª½¨²»ÁË×Ô¼ºµÄÉ³Ïä¶øÆð²»À´£¬±íÏÖÎªË«»÷ºóÒ»ÉÁ¶ø¹ý¡£´ËÊ±¸øÕâ¸ö½Å±¾´«
+rem  DYLR_EXTRA_ARGS=--no-sandbox ¼´¿É£¨Ä¬ÈÏ²»¼Ó£¬ÒòÎª²»¸ÃÓÉ½Å±¾ÌæÓÃ»§¹ØÉ³Ïä£©¡£
+rem ============================================================================
+
 cd /d "%~dp0"
 
-rem ============================================================================
-rem  DouyinLiveRecorder æ¡Œé¢ç«¯å¯åŠ¨è„šæœ¬
-rem  ---------------------------------------------------------------------------
-rem  è¿™é‡Œå¿…é¡»æ¸…æŽ‰ä¸¤ä¸ªçŽ¯å¢ƒå˜é‡ï¼š
-rem    NODE_OPTIONS         å®¿ä¸»çŽ¯å¢ƒå¯èƒ½æ³¨å…¥ --use-system-ca ç­‰å‚æ•°ï¼ŒElectron ä¸è®¤
-rem    ELECTRON_RUN_AS_NODE è‹¥è¢«ç½®ä½ï¼ŒElectron ä¼šé€€åŒ–æˆæ™®é€š Nodeï¼Œç•Œé¢èµ·ä¸æ¥
-rem  cmd é‡Œ `set VAR=` è¡¨ç¤ºåˆ é™¤è¯¥å˜é‡ï¼ˆä¸æ˜¯è®¾ä¸ºç©ºä¸²ï¼‰ï¼Œæ­£å¥½ç¬¦åˆéœ€è¦ã€‚
-rem ============================================================================
 set NODE_OPTIONS=
 set ELECTRON_RUN_AS_NODE=
 
 set ELECTRON=electron\node_modules\electron\dist\electron.exe
+set LOGCONSOLE=logs\desktop-console.log
+
+rem ×ÀÃæ¶ËÒªÀ­Æð Python ºó¶Ë£¬ËùÒÔ .venv ÊÇÓ²ÒÀÀµ£¬È±ÁË¾ÍÏÈËµÇå³þ
+if not exist ".venv\Scripts\python.exe" (
+    echo [!] Î´ÕÒµ½ .venv »·¾³£¬×ÀÃæ¶ËÐèÒªËüÀ´ÔËÐÐÂ¼ÖÆ·þÎñ¡£
+    echo     ÇëÏÈË«»÷¡¸°²×°ÒÀÀµ.bat¡¹¡£
+    pause
+    exit /b 1
+)
 
 if not exist "%ELECTRON%" (
-    echo [1/2] é¦–æ¬¡è¿è¡Œï¼Œæ­£åœ¨å®‰è£…æ¡Œé¢ç«¯ä¾èµ–ï¼ˆElectronï¼Œçº¦ 250MBï¼Œéœ€è”ç½‘ï¼‰...
+    echo [1/2] Ê×´ÎÔËÐÐ£¬ÕýÔÚ°²×°×ÀÃæ¶ËÒÀÀµ£¨Electron£¬Ô¼ 250MB£¬ÐèÁªÍø£©...
     pushd electron
     call npm install --registry=https://registry.npmmirror.com
     set NPM_RESULT=%errorlevel%
     popd
     if not "%NPM_RESULT%"=="0" (
         echo.
-        echo [!] ä¾èµ–å®‰è£…å¤±è´¥ã€‚è¯·ç¡®è®¤å·²å®‰è£… Node.js 18+ï¼Œæˆ–æ‰‹åŠ¨æ‰§è¡Œï¼š
+        echo [!] ÒÀÀµ°²×°Ê§°Ü¡£ÇëÈ·ÈÏÒÑ°²×° Node.js 18+£¬»òÊÖ¶¯Ö´ÐÐ£º
         echo     cd electron ^&^& npm install --registry=https://registry.npmmirror.com
         pause
         exit /b 1
     )
 )
 
-echo [2/2] å¯åŠ¨æ¡Œé¢ç«¯...
-"%ELECTRON%" "%~dp0electron"
+rem ×ÀÃæ¶Ë´°¿Ú×Ô¼º»áÏÔÊ¾ºó¶ËÆô¶¯½ø¶È£¬ÕâÀï²»±ØË¢ÆÁ£»
+rem µ«°ÑËüµÄÔ­Ê¼Êä³öÂäµ½ÎÄ¼þ£¬Æô¶¯Ê§°ÜÊ±²ÅÓÐ¾Ý¿É²é¡£
+if not exist "logs" mkdir "logs"
 
-if errorlevel 1 (
-    echo.
-    echo [i] æ­£å¸¸å¯åŠ¨å¤±è´¥ï¼Œæ”¹ç”¨è½¯ä»¶æ¸²æŸ“é‡è¯•ï¼ˆè¿œç¨‹æ¡Œé¢ / æ— æ˜¾å¡é©±åŠ¨çš„çŽ¯å¢ƒéœ€è¦ï¼‰...
-    "%ELECTRON%" --disable-gpu --disable-gpu-compositing --disable-software-rasterizer "%~dp0electron"
-)
+echo [2/2] Æô¶¯×ÀÃæ¶Ë...
+echo     Æô¶¯Ê§°ÜÊ±Çë²é¿´ %LOGCONSOLE%
+"%ELECTRON%" %DYLR_EXTRA_ARGS% "%~dp0electron" > "%LOGCONSOLE%" 2>&1
 
-if errorlevel 1 (
-    echo.
-    echo [!] æ¡Œé¢ç«¯å¯åŠ¨å¤±è´¥ã€‚å¯å…ˆç”¨å‘½ä»¤è¡Œæ¨¡å¼ç¡®è®¤åŽç«¯æ˜¯å¦æ­£å¸¸ï¼š
-    echo     .venv\Scripts\python.exe -m dylr --print-port
-    echo     åŽç«¯è¿è¡Œæ—¥å¿—ï¼šlogs\backend-console.log
-    pause
-)
+rem errorlevel 0 = Õý³£ÍË³ö£¨ÓÃ»§×Ô¼º¹Øµô´°¿Ú»òÑ¡ÁËÍË³ö£©£¬µ½´Ë½áÊø¡£
+if not errorlevel 1 goto :eof
+
+rem ·Ç 0 ËµÃ÷Ñ¹¸ùÃ»ÆðÀ´¡£ÏÈ»»Èí¼þäÖÈ¾ÔÙÊÔÒ»´Î£¨ÕæÊµÏÔ¿¨Çý¶¯Òì³£µÄ³£¼û½â·¨£©¡£
+echo.
+echo [i] Õý³£Æô¶¯Ê§°Ü£¬¸ÄÓÃÈí¼þäÖÈ¾ÖØÊÔ...
+"%ELECTRON%" %DYLR_EXTRA_ARGS% --disable-gpu --disable-gpu-compositing --disable-software-rasterizer "%~dp0electron" >> "%LOGCONSOLE%" 2>&1
+
+if not errorlevel 1 goto :eof
+
+echo.
+echo [!] ×ÀÃæ¶ËÆô¶¯Ê§°Ü¡£ÍêÕûÊä³öÔÚ£º
+echo     %~dp0%LOGCONSOLE%
+echo.
+echo     ³£¼ûÔ­Òò£º
+echo       1) È±ÒÀÀµ  - ÏÈË«»÷¡¸°²×°ÒÀÀµ.bat¡¹
+echo       2) ÊÜÏÞ»·¾³£¨Ô¶³Ì×ÀÃæ / ÐéÄâ»ú / ±»Ëø¶¨µÄ»úÆ÷£©ÏÂ Chromium É³Ïä²»¿ÉÓÃ£¬
+echo          ¿ÉÒÔÊÔ£ºset DYLR_EXTRA_ARGS=--no-sandbox ^&^& Æô¶¯×ÀÃæ¶Ë.bat
+echo       3) È·ÈÏºó¶Ë±¾ÉíÊÇ·ñÕý³££º
+echo          .venv\Scripts\python.exe -m dylr --print-port
+pause

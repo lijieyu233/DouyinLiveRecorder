@@ -280,10 +280,73 @@ bash capture-views.sh [输出目录]
 >
 > 抓图脚本**不使用 taskkill**：每次抓图都是独立启动、抓完自己退出。用 `taskkill`
 > 强杀会误伤用户自己跑的 python/electron，也会触发系统权限确认。
+> 另外给 Electron 传路径必须是 `D:/...` 形式，MSYS 的 `/d/...` 它不认（会静默退出、日志为空）。
 
 ---
 
-## 六、验证记录（本次实测）
+## 六、两个「双击没反应」的坑（都已修）
+
+### 6.1 启动脚本的编码：UTF-8 + chcp 会让 cmd 的解析彻底错位
+
+三个 `.bat` 原先都是 **UTF-8（无 BOM）+ 文件里写 `chcp 65001`**，且带中文注释。
+
+`cmd.exe` 是**按字节偏移逐行读取**批处理文件、并用**系统 ANSI 代码页**解析的。
+中途切代码页会让它的行边界错位，把中文从中间截断后当成命令执行：
+
+```
+启动桌面端.bat : '锛?rem' 不是内部或外部命令
+'鍦ㄥ畨瑁呮闈㈢渚濊禆锛圗lectron锛岀害' 不是内部或外部命令
+'&&' 不是内部或外部命令
+'f' 不是内部或外部命令
+```
+
+连 `&&`、`f` 这种碎片都被拿去当命令，控制流已经完全乱掉 —— 用户双击后
+窗口一闪而过（或根本没有窗口），且没有任何提示。
+
+**修法**：三个脚本统一改成 **GBK(936) + CRLF，并删掉 `chcp`**（中文 Windows 的原生写法）。
+转换脚本：`.workbuddy/tmp/convert_bats.py`（GBK 编码失败会抛异常，正好当字符校验）。
+
+**排查口诀**：用户说「双击没反应」时，先看 `logs/backend-console.log` 有没有新记录。
+后端是 Electron 起来之后才拉起的 —— 没有新记录说明问题在 Electron 之前；
+有新记录说明 Electron 已经起来了，问题在更后面。
+
+### 6.2 GPU 进程 FATAL：原因是 Chromium 沙箱，不是显卡
+
+Chromium 的 GPU 进程起不来时会重试几次，随后**直接 FATAL 让整个进程退出**
+（`before-quit` 都不执行）：
+
+```
+gpu_process_host.cc(982) GPU process exited unexpectedly: exit_code=1   ×5
+FATAL:gpu_data_manager_impl_private.cc(423)] GPU process isn't usable. Goodbye.
+```
+
+针对它做过四种参数组合的实测：
+
+| 参数 | 结果 |
+|---|---|
+| 无参数 | ❌ FATAL，退出码 3 |
+| `--disable-gpu` | ❌ FATAL，退出码 3 |
+| `--no-sandbox` | ✅ 正常 |
+| `--no-sandbox --disable-gpu --disable-software-rasterizer --disable-gpu-compositing` | ✅ 正常 |
+
+即 **`--disable-gpu` 对这个 FATAL 完全无效**，真正原因是受限环境里 GPU 进程
+建不起自己的沙箱。据此：
+
+* 删掉了原先「GPU 崩溃 → `app.relaunch()` 带 `--disable-gpu` 重启」的逻辑。
+  它有两个问题：换的参数治不了病；relaunch 出来的新实例会撞上
+  `requestSingleInstanceLock` 的竞态、被自己锁死后静默退出 ——
+  把失败藏起来，比失败本身更糟。现在只如实记录到 `logs/desktop-console.log`。
+* 保留一个**手动**的「关闭硬件加速」开关（设置页 · 桌面端分组），给真实显卡驱动异常的
+  场景用；不再自动写入该偏好。
+* `启动桌面端.bat` 的失败提示给出可执行的下一步，并支持 `DYLR_EXTRA_ARGS` 透传：
+  受限环境（远程桌面 / 虚拟机）可自行传 `--no-sandbox`，但**不默认加** ——
+  关不关沙箱是安全决定，不该由程序替用户做。
+* 启动器把 Electron 的 stdout/stderr 重定向到 `logs/desktop-console.log`，
+  否则失败之后连证据都拿不到。
+
+---
+
+## 七、验证记录（本次实测）
 
 | 项目 | 结果 |
 |---|---|
@@ -292,5 +355,7 @@ bash capture-views.sh [输出目录]
 | 配置读写 | 119 个字段、14 个分组；改一项后 `git diff config/config.ini` **0 行**（写回后完全还原） |
 | 接口 | `health` 免鉴权 200、`/api/state` 无令牌 401、任务增删改查与排序、配置校验（非法值返回 400 且不落盘）、文件列表与磁盘信息全部通过 |
 | 录制链路 | 真实启动录制抖音直播间「瑞幸咖啡」，`downloads/抖音直播/瑞幸咖啡/` 产出 TS 分段并自动转 MP4（本次运行累计 328MB） |
-| 界面 | 6 个页面逐一截图核对（见 `.workbuddy/tmp/v-*.png`），包含真实录制中的任务卡、错误态、暂停态 |
-| 静态检查 | 全部渲染层/主进程 JS 通过 `node --check` |
+| 界面 | 6 个页面逐一截图核对，包含真实录制中的任务卡、错误态、暂停态 |
+| 静态检查 | 全部渲染层/主进程 JS 通过 `node --check`（18 个文件）；`dylr/` 通过 `py_compile` |
+| 启动链路 | 双击 `启动桌面端.bat` 实测：窗口标题 `DouyinLiveRecorder` 可见、后端就绪、`logs/desktop-console.log` 无任何报错 |
+| 启动进度 | `python -m dylr --print-port` 按序输出 6 条 `DYLR_STAGE`，首条在解释器启动后约 0.2 秒发出 |
