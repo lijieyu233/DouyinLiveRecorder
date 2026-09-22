@@ -5,6 +5,8 @@ import inspect
 import builtins
 from pathlib import Path
 
+from src import paths
+
 
 def init_gettext(locale_dir, locale_name):
     gettext.bindtextdomain('zh_CN', locale_dir)
@@ -13,7 +15,9 @@ def init_gettext(locale_dir, locale_name):
     return gettext.gettext
 
 
-execute_dir = os.path.split(os.path.realpath(sys.argv[0]))[0]
+#: 项目根目录。上游用 ``sys.argv[0]`` 推导，模块方式启动时会把
+#: ``i18n/`` 找错地方，这里统一走 src.paths。
+execute_dir = paths.slash(paths.project_root())
 if os.path.exists(Path(execute_dir) / '_internal/i18n'):
     locale_path = Path(execute_dir) / '_internal/i18n'
 else:

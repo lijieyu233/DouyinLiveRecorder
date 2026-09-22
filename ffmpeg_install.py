@@ -15,10 +15,11 @@ import zipfile
 from pathlib import Path
 import requests
 from tqdm import tqdm
+from src import paths
 from src.logger import logger
 
 current_platform = platform.system()
-execute_dir = os.path.split(os.path.realpath(sys.argv[0]))[0]
+execute_dir = paths.slash(paths.project_root())
 current_env_path = os.environ.get('PATH')
 ffmpeg_path = os.path.join(execute_dir, 'ffmpeg')
 

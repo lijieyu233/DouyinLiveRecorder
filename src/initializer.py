@@ -16,10 +16,11 @@ import requests
 import re
 import distro
 from tqdm import tqdm
+from . import paths
 from .logger import logger
 
 current_platform = platform.system()
-execute_dir = os.path.split(os.path.realpath(sys.argv[0]))[0]
+execute_dir = paths.slash(paths.project_root())
 current_env_path = os.environ.get('PATH')
 
 
