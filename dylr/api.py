@@ -69,13 +69,18 @@ class ApiServer:
 
     def __init__(self, manager: RecorderManager, bus: EventBus | None = None,
                  token: str = "", host: str = "127.0.0.1", port: int = 0,
-                 library: MediaLibrary | None = None) -> None:
+                 library: MediaLibrary | None = None,
+                 on_quit: Callable[[], None] | None = None) -> None:
         self.manager = manager
         self.bus = bus or manager.bus
         self.token = token
         self.host = host
         self.port = port
         self.library = library or MediaLibrary()
+        # `/api/quit` 只负责「通知宿主该收尾了」，真正的停止顺序交给 Service 统一编排
+        # （先让 ffmpeg 收尾 → 停后台循环 → 关接口）。如果这里自己去关一半，
+        # 监听 socket 不会被 server_close()、主线程也收不到通知，进程会一直挂着。
+        self._on_quit = on_quit
         self._httpd: _Server | None = None
         self._thread: threading.Thread | None = None
         self.routes: list[Route] = []
@@ -365,11 +370,14 @@ class ApiServer:
         return 200, {"ok": True}
 
     def _shutdown_soon(self) -> None:
-        time.sleep(0.3)
+        time.sleep(0.3)                      # 先把 200 响应发出去，再开始收尾
+        if self._on_quit is not None:
+            self._on_quit()
+            return
+        # 没有宿主（例如单元测试里直接起 ApiServer）时的兜底
         self.manager.exit_recording = True
         self.manager.shutdown()
-        if self._httpd:
-            self._httpd.shutdown()
+        self.stop()
 
     # ================================================================== SSE
     def stream_snapshot(self, since: int = 0) -> list[dict]:

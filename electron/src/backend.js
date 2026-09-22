@@ -126,6 +126,11 @@ class BackendService {
       '--token', this.token,
       '--no-console',
       '--print-port',
+      // 把自己的 PID 告诉后端：万一 Electron 被异常结束（崩溃 / 任务管理器强杀），
+      // 下面 stop() 里的优雅停止根本没机会执行，后端就会变成孤儿一直录下去。
+      // 实测过最坏情况是几个孤儿后端并发录同一个直播间、磁盘被倍数吃满，
+      // 而且没有任何界面在提示。后端每 5 秒检查一次这个 PID，父进程没了就自己收尾。
+      '--parent-pid', String(process.pid),
     ];
 
     return new Promise((resolve, reject) => {

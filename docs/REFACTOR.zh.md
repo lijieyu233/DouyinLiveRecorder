@@ -344,6 +344,72 @@ FATAL:gpu_data_manager_impl_private.cc(423)] GPU process isn't usable. Goodbye.
 * 启动器把 Electron 的 stdout/stderr 重定向到 `logs/desktop-console.log`，
   否则失败之后连证据都拿不到。
 
+### 6.3 孤儿后端：父进程没了，它还一直在录
+
+**实测到的真实事故**：调试期间几个 Electron 实例被异常结束（GPU FATAL、强杀），
+优雅停止的代码根本没机会执行，于是留下几个**孤儿后端**继续跑。后果长这样：
+
+```
+$ ls downloads/抖音直播/瑞幸咖啡/
+瑞幸咖啡_2026-09-22_17-22-39_000.ts   579 MB   ← 当前应用
+瑞幸咖啡_2026-09-22_17-22-42_000.ts   155 MB   ← 孤儿 1
+瑞幸咖啡_2026-09-22_17-22-43_000.ts   154 MB   ← 孤儿 2
+```
+
+4 个后端 × 4 个 ffmpeg 同时录**同一个直播间**，磁盘按倍数被吃满，
+而且没有任何界面在提示这件事。重构时只修了「优雅退出」这条路，
+「父进程被异常杀死」这条路是空的。
+
+**修法**：Electron 把 `--parent-pid` 传给它拉起的后端；后端每 5 秒检查一次这个
+PID 还在不在，不在就走 `stop()` 收尾退出（`dylr/service.py::ParentWatch`）。
+
+* Windows 上用 `OpenProcess(SYNCHRONIZE)` + `WaitForSingleObject`，句柄
+  **只打开一次**并一直持有 —— 这样即使 PID 后来被系统复用也不会误判成「还活着」。
+  POSIX 上 `kill(pid, 0)` 就够。
+* 拿不到进程信息时按「还活着」处理：宁可漏杀，不可误杀。
+* 没传 `--parent-pid`（命令行模式）时完全不介入。
+
+实测（拿一个真实存在的 Windows PID 当父进程）：
+
+| 场景 | 结果 |
+|---|---|
+| 父进程存活，等待 20 秒（跨 4 个检查周期） | 后端保持不变 ✔（不误杀） |
+| 父进程不存在 | 后端 1 秒内记录「父进程已消失」并优雅退出 ✔ |
+
+顺带修掉一个 loguru 用法错误：`logger.warning("pid=%s", x)` 会原样打印出 `pid=%s`
+—— loguru 用 `{}` 占位，不是 `%`-格式化。
+
+### 6.4 `/api/quit` 是个假退出
+
+顺着上面那条线查出来：`/api/quit` 返回 200，但进程根本不会退出。
+
+```python
+def _shutdown_soon(self):
+    time.sleep(0.3)
+    self.manager.exit_recording = True
+    self.manager.shutdown()
+    if self._httpd:
+        self._httpd.shutdown()      # ← 只停了 serve_forever，没 server_close()：
+                                    #   端口还在 LISTENING；主线程也没收到任何通知
+```
+
+它既没关掉监听 socket，也从来没告诉主线程该收尾了 —— 主线程还在
+`while True: time.sleep(1)` 里等（现在换成了 `wait_until_stopped()`）。
+所以桌面端每次退出只能靠 `backend.js` 兜底升级到 SIGTERM / taskkill，
+而**硬杀恰恰会留下孤儿 ffmpeg** —— 正是重构声称要修掉的那个问题，
+原来只是被兜底掩盖了。
+
+**修法**：
+
+* `ApiServer` 增加 `on_quit` 回调；`/api/quit` 只负责「通知宿主」，
+  真正的停止顺序由 `Service.stop()` 统一编排：让 ffmpeg 收尾 → 停后台循环 → 关接口。
+* `Service.stop()` 改用独立的 `_stopped` 标记做幂等判断。**不能拿 `_stopping` 当判据**
+  —— `/api/quit` 与看门狗都会先把它置位以唤醒等待循环，若 `stop()` 见到它就 return，
+  真正的收尾永远不会执行。
+* `--print-port` 路径补 `finally: service.stop()`，把收尾兜住。
+
+实测：`POST /api/quit` → 200 之后，端口不再 LISTENING、进程退出。
+
 ---
 
 ## 七、验证记录（本次实测）

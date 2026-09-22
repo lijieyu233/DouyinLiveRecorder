@@ -40,25 +40,109 @@ BANNER = r"""
 
 _CLEAR = "cls" if os.name == "nt" else "clear"
 
+PARENT_CHECK_INTERVAL = 5.0
+
+
+class ParentWatch:
+    """监视父进程是否还活着。父进程消失 → 自己也该收尾退出。
+
+    为什么必须有这个东西：Electron 异常退出（GPU FATAL、任务管理器强杀、断电）
+    时不会执行优雅停止，本后端就变成**孤儿**继续录制。实测过最坏情况——
+    上一轮调试留下的几个孤儿后端同时录同一个直播间，四份并发写盘，磁盘按倍数
+    被吃满，而且没有任何界面在提示这件事。
+
+    父进程是外部进程，它的退出不会给自己发信号，所以只能主动轮询。
+    Windows 上用 ``OpenProcess`` + ``WaitForSingleObject``：句柄**只开一次**，
+    这样即便 PID 后来被系统复用也不会误判成「父进程还在」。
+    POSIX 上 ``kill(pid, 0)`` 就够了。
+    """
+
+    def __init__(self, pid: int | None) -> None:
+        self.pid = int(pid) if pid else None
+        self._handle = None
+        self._posix = os.name != "nt"
+        if self.pid and not self._posix:
+            self._handle = self._open_windows(self.pid)
+
+    @staticmethod
+    def _open_windows(pid: int):
+        import ctypes
+        SYNCHRONIZE = 0x00100000
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+        if not handle:
+            return None
+        # 已经退出的进程句柄也是「已信号」状态，所以这里不能直接判死，
+        # 交给 alive() 用 WaitForSingleObject 判断。
+        return handle
+
+    def alive(self) -> bool:
+        """父进程是否仍在运行。拿不到进程信息时按「还活着」处理，宁可不杀。"""
+        if not self.pid:
+            return True
+        if self._posix:
+            try:
+                os.kill(self.pid, 0)
+            except ProcessLookupError:
+                return False
+            except PermissionError:
+                return True
+            return True
+        if self._handle is None:
+            # 一开始就没打开成功：说明父进程当时就不在了
+            return False
+        import ctypes
+        WAIT_TIMEOUT = 0x00000102
+        return ctypes.windll.kernel32.WaitForSingleObject(self._handle, 0) == WAIT_TIMEOUT
+
+    def close(self) -> None:
+        if self._handle is not None and not self._posix:
+            import ctypes
+            ctypes.windll.kernel32.CloseHandle(self._handle)
+            self._handle = None
+
 
 class Service:
     """后端服务门面。"""
 
     def __init__(self, host: str = "127.0.0.1", port: int = 0, token: str = "",
                  autostart: bool = True, console: bool = True,
-                 use_api: bool = True, config: AppConfig | None = None) -> None:
+                 use_api: bool = True, config: AppConfig | None = None,
+                 parent_pid: int | None = None) -> None:
         self.bus = EventBus()
         self.cfg = config or AppConfig()
         self.manager = RecorderManager(cfg=self.cfg, bus=self.bus, store=TaskStore())
-        self.api = ApiServer(self.manager, self.bus, token=token, host=host, port=port) \
-            if use_api else None
+        # 先建停止信号：ApiServer 的 /api/quit 回调要直接指向它
+        self._stopping = threading.Event()
+        self._stopped = False
+        self._stop_lock = threading.Lock()
+        self.api = ApiServer(self.manager, self.bus, token=token, host=host, port=port,
+                            on_quit=self._stopping.set) if use_api else None
         self.token = token
         self.host = host
         self.port = port
         self.autostart = autostart
         self.console = console
+        self.parent = ParentWatch(parent_pid)
         self._log_sink = bridge_loguru(self.bus, level="INFO")
-        self._stopping = threading.Event()
+
+    # ================================================================== 等待
+    def wait_until_stopped(self) -> None:
+        """主等待循环：收到退出信号，或父进程消失，都会返回。"""
+        last_check = 0.0
+        while not self._stopping.is_set():
+            time.sleep(0.5)
+            now = time.monotonic()
+            if now - last_check < PARENT_CHECK_INTERVAL:
+                continue
+            last_check = now
+            if not self.parent.alive():
+                # 注意 loguru 用 {} 占位（不是 %s），写成 %s 会原样打印出来
+                logger.warning("父进程（pid={}）已消失，后端随之退出，避免变成孤儿继续录制",
+                               self.parent.pid)
+                self.stop()
+                return
+        self.parent.close()
 
     # ================================================================== 启动
     def start_api(self) -> None:
@@ -107,8 +191,7 @@ class Service:
         if self.console:
             threading.Thread(target=self._console_loop, name="console", daemon=True).start()
         try:
-            while not self._stopping.is_set():
-                time.sleep(0.5)
+            self.wait_until_stopped()
         except KeyboardInterrupt:
             print("\n收到退出信号，正在停止录制…")
         finally:
@@ -133,8 +216,17 @@ class Service:
                 pass
 
     def stop(self) -> None:
-        if self._stopping.is_set():
-            return
+        """停止录制与接口。可重复调用，只有第一次真正执行收尾。
+
+        注意不能拿 ``_stopping`` 当「已经停过」的判据：``/api/quit`` 与父进程
+        看门狗都会先把 ``_stopping`` 置位（好让等待循环醒过来），如果这里见到它
+        就 return，真正的收尾（让 ffmpeg 结束、关掉监听 socket）就永远不执行了 ——
+        进程会挂在那儿，端口还在 LISTENING。所以另用一个 ``_stopped`` 标记。
+        """
+        with self._stop_lock:
+            if self._stopped:
+                return
+            self._stopped = True
         self._stopping.set()
         try:
             self.manager.shutdown()
@@ -238,6 +330,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="接口端口，0 表示自动分配")
     parser.add_argument("--token", default=os.environ.get("DYLR_TOKEN", ""),
                         help="接口访问令牌（桌面端会自动注入）")
+    parser.add_argument("--parent-pid", type=int, default=None,
+                        help="父进程 PID（桌面端注入）。父进程退出后自己也收尾退出，"
+                             "避免它被强杀时留下孤儿后端继续录制")
     parser.add_argument("--no-console", action="store_true",
                         help="不渲染终端状态面板")
     parser.add_argument("--no-server", action="store_true",
@@ -260,6 +355,7 @@ def main(argv: list[str] | None = None) -> int:
         autostart=not args.no_autostart,
         console=not args.no_console,
         use_api=not args.no_server,
+        parent_pid=args.parent_pid,
     )
     if args.print_port and service.api is not None:
         # 分阶段上报进度，父进程据此渲染启动页。每一条都对应真实执行的动作，
@@ -284,9 +380,13 @@ def main(argv: list[str] | None = None) -> int:
         stage(f"就绪：{len(PLATFORMS)} 个平台 · {task_count} 个监控任务")
         print(f"DYLR_READY port={service.port} token={service.token}", flush=True)
         try:
-            while True:
-                time.sleep(1)
+            # 同样走带父进程监视的等待：Electron 被强杀时这里会自己收尾退出
+            service.wait_until_stopped()
         except KeyboardInterrupt:
+            pass
+        finally:
+            # /api/quit 与看门狗都只是把等待循环叫醒，收尾必须在这里兜住，
+            # 否则会留下「端口还在监听、ffmpeg 还在写盘」的半死进程
             service.stop()
         return 0
     return service.run_forever()
